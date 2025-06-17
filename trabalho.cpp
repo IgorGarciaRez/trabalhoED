@@ -117,58 +117,67 @@ void mergePass(string inputFiles[], int numInputFile, string outputFiles[], int 
     }
 
     int outputTurn = 0; // alteernar entre arquivos de saida
+    
     bool allFilesFinished = false;
-    //loop principal: continua enquanto houver dados em pelomenos um arquivo
-    while(!allFilesFinished){
-        int maxVal = -1;
-        int maxInd = -1;
-        bool foundMax = false;
+    bool blocksFinished;
 
-        for(int i = 0; i < numInputFile; i++){
-            if(hasMoreData[i] && (valuesReadInCurrentRun[i] <= blockSize)){
-                if(maxInd == -1 || currentValue[i] >= maxVal){
-                    maxVal = currentValue[i];
-                    maxInd = i;
-                    foundMax = true;
+    while (!allFilesFinished) {
+        int writtenCount = 0;
+        bool anyActive = false;
+        blocksFinished = false;
+
+        while (!blocksFinished) {
+            int maxVal = -1;
+            int maxInd = -1;
+
+            for (int i = 0; i < numInputFile; i++) {
+                if (hasMoreData[i] && valuesReadInCurrentRun[i] <= blockSize) {
+                    if (maxInd == -1 || currentValue[i] >= maxVal) {
+                        maxVal = currentValue[i];
+                        maxInd = i;
+                    }
                 }
+            }
+
+            if (maxInd == -1) blocksFinished = true; // todos os blocos acabaram
+            if(!blocksFinished){
+                outputs[outputTurn] << maxVal << " ";
+                writtenCount++;
+                if (inputs[maxInd] >> currentValue[maxInd]) {
+                    valuesReadInCurrentRun[maxInd]++;
+                } else {
+                    hasMoreData[maxInd] = false;
+                }
+            }            
+        }
+
+        if (writtenCount > 0) {
+            outputs[outputTurn] << endl;
+        }
+
+        // Reset para próxima rodada de blocos
+        allFilesFinished = true;
+        for (int i = 0; i < numInputFile; i++) {
+            valuesReadInCurrentRun[i] = 0;
+            if (hasMoreData[i]) {
+                allFilesFinished = false;
+            } else if (inputs[i] >> currentValue[i]) {
+                hasMoreData[i] = true;
+                valuesReadInCurrentRun[i] = 1;
+                allFilesFinished = false;
             }
         }
 
-        if(foundMax){
-            outputs[outputTurn] << maxVal << " ";
-            if(inputs[maxInd] >> currentValue[maxInd]){
-                valuesReadInCurrentRun[maxInd]++;
-            }else{
-                hasMoreData[maxInd] = false;
-            }
-        }else{
-            bool anyFileHasMore = false;
-            for(int i = 0; i < numInputFile; i++){
-                valuesReadInCurrentRun[i] = 0;
-                if(inputs[i] >> currentValue[i]){
-                    hasMoreData[i] = true;
-                    valuesReadInCurrentRun[i] = 1;
-                    anyFileHasMore = true;
-                }else{
-                    allFilesFinished = false;
-                }
-            }
-            if(anyFileHasMore){
-                allFilesFinished = true;
-            }else{
-                outputs[outputTurn] << endl;
-                outputTurn = (outputTurn + 1) % numOutputFile;
-            }
-        }  
+        outputTurn = (outputTurn + 1) % numOutputFile;
     }
+
     for(int i = 0; i < numInputFile; i++) inputs[i].close();
     for(int i = 0; i < numOutputFile; i++) outputs[i].close();
     cout << "Passagem de intercalação concluída." << endl;
 }
 
 int main() {
-    // Nomes dos arquivos temporários
-    std::string tempFiles[NUM_TEMP_FILES] = {
+    string tempFiles[NUM_TEMP_FILES] = {
         "temp1.txt", "temp2.txt", "temp3.txt",
         "temp4.txt", "temp5.txt", "temp6.txt"
     };
@@ -179,12 +188,12 @@ int main() {
 
     for (int pass = 0; pass < HALF; ++pass) {
         if (usingSet1) { // Intercala de (temp1, temp2, temp3) para (temp4, temp5, temp6)
-            std::string inputSet[] = {tempFiles[0], tempFiles[1], tempFiles[2]};
-            std::string outputSet[] = {tempFiles[3], tempFiles[4], tempFiles[5]};
+            string inputSet[] = {tempFiles[0], tempFiles[1], tempFiles[2]};
+            string outputSet[] = {tempFiles[3], tempFiles[4], tempFiles[5]};
             mergePass(inputSet, 3, outputSet, 3, currentBlockSize);
         } else { // Intercala de (temp4, temp5, temp6) para (temp1, temp2, temp3)
-            std::string inputSet[] = {tempFiles[3], tempFiles[4], tempFiles[5]};
-            std::string outputSet[] = {tempFiles[0], tempFiles[1], tempFiles[2]};
+            string inputSet[] = {tempFiles[3], tempFiles[4], tempFiles[5]};
+            string outputSet[] = {tempFiles[0], tempFiles[1], tempFiles[2]};
             mergePass(inputSet, 3, outputSet, 3, currentBlockSize);
         }
         usingSet1 = !usingSet1; // alterna o conjunto de arquivos
@@ -194,11 +203,6 @@ int main() {
     cout << "\nIntercalação externa balanceada concluída (simulada)." << endl;
     cout << "Verifique os arquivos temporários para entender o processo." << endl;
 
-    // Limpeza: Remover arquivos temporários (opcional)
-    for (int i = 0; i < NUM_TEMP_FILES; ++i) {
-        remove(tempFiles[i].c_str());
-    }
-    //remove("input.txt"); // Remover o arquivo de entrada de exemplo
     cout << "Arquivos temporários e de entrada removidos." << endl;
 
     return 0;
