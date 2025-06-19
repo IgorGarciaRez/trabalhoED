@@ -1,209 +1,284 @@
 #include <iostream>
-#include <fstream> 
+#include <fstream>
 #include <string>
+#include <sstream>
+#include <cstring>
 
 using namespace std;
 
-const int BLOCK_SIZE = 4;
-const int NUM_TEMP_FILES = 6; // tem que ser par
-const int HALF = NUM_TEMP_FILES/2;
+const int BLOCK_SIZE = 1000;
+const int NUM_TEMP_FILES = 20;
 
-void sortBlock(int arr[], int size) {
-    for (int i = 0; i < size - 1; ++i) {
-        for (int j = 0; j < size - 1 - i; ++j) {
-            if (arr[j] < arr[j+1]) { 
-                int temp = arr[j];
-                arr[j] = arr[j+1];
-                arr[j+1] = temp;
-            }
-        }
+struct Athlete{
+    int id;
+    char name[100];
+    char city[60];
+    char sport[60];
+    char event[120];
+    char noc[3];
+};
+
+//string pra inteiro
+int toInt(const string& str){
+    //stoi -> string to integer (biblioteca std)
+    int num;
+    try {
+        num = stoi(str);
+    } catch (const invalid_argument& e) {
+        cerr << "Error: Invalid argument for stoi - " << e.what() << endl;
+    } catch (const out_of_range& e) {
+        cerr << "Error: Number out of range for stoi - " << e.what() << endl;
     }
+    return num;
 }
 
-void distributeBlocks(string inputFileName, string tempFiles[]){
-    ifstream inputFile(inputFileName);
-    if(!inputFile.is_open()){
-        throw runtime_error("Erro ao abrir o arquivo: " + inputFileName);
-    }
+//conversor de csv para binario
+void csvToBin(const string& csvName, const string& binName) {
+    ifstream input(csvName.c_str());
+    if (!input.is_open()) throw runtime_error("Erro ao abrir arquivo de entrada: " + csvName);
     
-    ofstream outputFiles[HALF];
-    //criar os arquivos temporarios
-    for(int i = 0; i < HALF; i++){
-        outputFiles[i].open(tempFiles[i]);
-        if(!outputFiles[i].is_open()){
-            for(int j = 0; j < i; j++){
-                outputFiles[j].close();
-            }
-            inputFile.close();
-            throw runtime_error("Erro ao criar arquivo temporario: " + tempFiles[i]);
-        }
-    }
+    ofstream binary(binName.c_str(), ios::binary);
+    if (!binary.is_open()) throw runtime_error("Erro ao abrir arquivo binario: " + binName);
+    
+    string line;
+    
+    // Pula a primeira linha (cabeçalho)
+    getline(input, line);
 
-    int block[BLOCK_SIZE];
-    int fileIndex = 0;
-    int numRead;
-    int value;
-    bool stillReading = true;
-
-    while(stillReading){
-        numRead = 0;
-        int tempVal;
+    while (getline(input, line)) {
+        if (line.empty()) continue; // Pula linhas vazias
         
-        // Tenta ler o primeiro número para o bloco
-        if (inputFile >> tempVal) {
-            block[numRead++] = tempVal;
-            // Tenta ler os números restantes para preencher o bloco
-            while (numRead < BLOCK_SIZE && (inputFile >> tempVal)) {
-                block[numRead++] = tempVal;
-            }
-            // Se lemos algo, processamos
-            if(numRead > 0){
-                sortBlock(block, numRead);
-                for(int i = 0; i < numRead; i++){
-                    outputFiles[fileIndex] << block[i] << " ";
-                }
-                outputFiles[fileIndex] << endl;
-                fileIndex = (fileIndex + 1) % HALF;
-            }
-        } else {
-            // Se não conseguimos ler nem o primeiro número, significa fim do arquivo
-            stillReading = false;
-        }
-    }
+        istringstream ss(line);
+        Athlete a;
+        string field;
 
-    inputFile.close();
-    for(int i = 0; i < HALF; i++){
-        outputFiles[i].close();
-    }
-    cout<<"Distribuicao inicial concluida"<<endl;
+        // inicializar estrutura
+        a.id = 0;
+        a.name[0] = '\0';
+        a.city[0] = '\0';
+        a.sport[0] = '\0';
+        a.event[0] = '\0';
+        a.noc[0] = '\0';
+
+        if (getline(ss, field, ',')) {
+            a.id = toInt(field);
+        }
+        if (getline(ss, field, ',')) {
+            strncpy(a.name, field.c_str(), sizeof(a.name) - 1);
+            a.name[sizeof(a.name) - 1] = '\0';
+        }
+        if (getline(ss, field, ',')) {
+            strncpy(a.city, field.c_str(), sizeof(a.city) - 1);
+            a.city[sizeof(a.city) - 1] = '\0';
+        }
+        if (getline(ss, field, ',')) {
+            strncpy(a.sport, field.c_str(), sizeof(a.sport) - 1);
+            a.sport[sizeof(a.sport) - 1] = '\0';
+        }
+        if (getline(ss, field, ',')) {
+            strncpy(a.event, field.c_str(), sizeof(a.event) - 1);
+            a.event[sizeof(a.event) - 1] = '\0';
+        }
+        if (getline(ss, field)) { // ultimo campo não tem vírgula
+            strncpy(a.noc, field.c_str(), sizeof(a.noc) - 1);
+            a.noc[sizeof(a.noc) - 1] = '\0';
+        }
+        binary.write(reinterpret_cast<char*>(&a), sizeof(Athlete));
+    }    
+    input.close();
+    binary.close();
 }
 
-void mergePass(string inputFiles[], int numInputFile, string outputFiles[], int numOutputFile, int blockSize){
-
-    cout<<"Realizando passagem com intercalação"<<endl;
-
-    ifstream inputs[numInputFile];
-    for(int i = 0; i < numInputFile; i++){
-        inputs[i].open(inputFiles[i]);
-        if(!inputs[i].is_open()){
-            for(int j = 0; j < i; j++) inputs[j].close();
-            throw runtime_error("Não foi possivel abrir o arquivo para intercalação: " + inputFiles[i]);
+//ordenação dos elementos dentro do bloco - descrescente
+void orderBlock(Athlete block[], int size) {
+    for (int i = 0; i < size - 1; ++i) {
+        for (int j = 0; j < size - i - 1; ++j) {
+            if (block[j].id < block[j + 1].id) {
+                Athlete temp = block[j];
+                block[j] = block[j + 1];
+                block[j + 1] = temp;
+            }
         }
     }
+}
 
-    ofstream outputs[numOutputFile];
-    for(int i = 0; i < numOutputFile; i++){
-        outputs[i].open(outputFiles[i]);
-        if(!outputs[i].is_open()){
-            for(int j = 0; j < i; j++) outputs[j].close();
-            for(int j = 0; j < numInputFile; j++) inputs[j].close();
-            throw runtime_error("Não foi possivel abrir o arquivo para intercalação: " + outputFiles[i]);
-        }
-    }
-
-    int currentValue[numInputFile];
-    bool hasMoreData[numInputFile];
-    int valuesReadInCurrentRun[numInputFile];
-
-    //inicialização das variáveis pré-loop
-    for(int i = 0; i < numInputFile; i++){
-        if(inputs[i] >> currentValue[i]){
-            hasMoreData[i] = true;
-            valuesReadInCurrentRun[i] = 1;
+//ler os elementos do bloco
+int readBlock(ifstream& file, Athlete block[]){
+    int read = 0;
+    bool limit = false;
+    while(read < BLOCK_SIZE && limit == false) {
+        file.read(reinterpret_cast<char *>(&block[read]), sizeof(Athlete));
+        if(file.gcount() < sizeof(Athlete)){
+            limit = true;
         }else{
-            hasMoreData[i] = false;
-            valuesReadInCurrentRun[i] = 0;
+            read++;
         }
     }
-
-    int outputTurn = 0; // alteernar entre arquivos de saida
-    
-    bool allFilesFinished = false;
-    bool blocksFinished;
-
-    while (!allFilesFinished) {
-        int writtenCount = 0;
-        bool anyActive = false;
-        blocksFinished = false;
-
-        while (!blocksFinished) {
-            int maxVal = -1;
-            int maxInd = -1;
-
-            for (int i = 0; i < numInputFile; i++) {
-                if (hasMoreData[i] && valuesReadInCurrentRun[i] <= blockSize) {
-                    if (maxInd == -1 || currentValue[i] >= maxVal) {
-                        maxVal = currentValue[i];
-                        maxInd = i;
-                    }
-                }
-            }
-
-            if (maxInd == -1) blocksFinished = true; // todos os blocos acabaram
-            if(!blocksFinished){
-                outputs[outputTurn] << maxVal << " ";
-                writtenCount++;
-                if (inputs[maxInd] >> currentValue[maxInd]) {
-                    valuesReadInCurrentRun[maxInd]++;
-                } else {
-                    hasMoreData[maxInd] = false;
-                }
-            }            
-        }
-
-        if (writtenCount > 0) {
-            outputs[outputTurn] << endl;
-        }
-
-        // Reset para próxima rodada de blocos
-        allFilesFinished = true;
-        for (int i = 0; i < numInputFile; i++) {
-            valuesReadInCurrentRun[i] = 0;
-            if (hasMoreData[i]) {
-                allFilesFinished = false;
-            } else if (inputs[i] >> currentValue[i]) {
-                hasMoreData[i] = true;
-                valuesReadInCurrentRun[i] = 1;
-                allFilesFinished = false;
-            }
-        }
-
-        outputTurn = (outputTurn + 1) % numOutputFile;
-    }
-
-    for(int i = 0; i < numInputFile; i++) inputs[i].close();
-    for(int i = 0; i < numOutputFile; i++) outputs[i].close();
-    cout << "Passagem de intercalação concluída." << endl;
+    return read;
 }
 
-int main() {
-    string tempFiles[NUM_TEMP_FILES] = {
-        "temp1.txt", "temp2.txt", "temp3.txt",
-        "temp4.txt", "temp5.txt", "temp6.txt"
-    };
+//adiciona blocos nos arquivos
+void writeBlock(int indexFile, Athlete newBlock[], int newSize){
+    ostringstream oss;
+    oss << "temp" << indexFile << ".bin";
+    string nameTemp = oss.str();
 
-    distributeBlocks("entrada.txt", tempFiles);
-    int currentBlockSize = BLOCK_SIZE;
-    bool usingSet1 = true;
+    ifstream file(nameTemp.c_str(), ios::binary);
+    Athlete* block = NULL;
+    int size = 0;
 
-    for (int pass = 0; pass < HALF; ++pass) {
-        if (usingSet1) { // Intercala de (temp1, temp2, temp3) para (temp4, temp5, temp6)
-            string inputSet[] = {tempFiles[0], tempFiles[1], tempFiles[2]};
-            string outputSet[] = {tempFiles[3], tempFiles[4], tempFiles[5]};
-            mergePass(inputSet, 3, outputSet, 3, currentBlockSize);
-        } else { // Intercala de (temp4, temp5, temp6) para (temp1, temp2, temp3)
-            string inputSet[] = {tempFiles[3], tempFiles[4], tempFiles[5]};
-            string outputSet[] = {tempFiles[0], tempFiles[1], tempFiles[2]};
-            mergePass(inputSet, 3, outputSet, 3, currentBlockSize);
+    if(file.is_open()){
+        file.seekg(0, ios::end);
+        long byteSize = file.tellg();
+        size = byteSize / sizeof(Athlete);
+        if(size > 0){
+            block = new Athlete[size];
+            file.seekg(0, ios::beg);
+            file.read(reinterpret_cast<char*>(block), byteSize);
         }
-        usingSet1 = !usingSet1; // alterna o conjunto de arquivos
-        currentBlockSize *= HALF; // aumenta o tamanho dos blocos intercalados
+        file.close();
     }
 
-    cout << "\nIntercalação externa balanceada concluída (simulada)." << endl;
-    cout << "Verifique os arquivos temporários para entender o processo." << endl;
+//cria array combinado (novo bloco + existente) -> copia bloco novo -> copia bloco existente
+    int sizet = newSize + size;
+    Athlete* combinedBlock = new Athlete[sizet];
+    for (int i = 0; i < newSize; ++i) {
+        combinedBlock[i] = newBlock[i];
+    }
+    for (int i = 0; i < size; ++i) {
+        combinedBlock[newSize + i] = block[i];
+    }
+    orderBlock(combinedBlock, sizet);
+    
+    ofstream output(nameTemp.c_str(), ios::binary);
+    for (int i = 0; i < sizet; ++i) {
+        output.write(reinterpret_cast<char*>(&combinedBlock[i]), sizeof(Athlete));
+    }
+    output.close();
+    if (block) delete[] block;
+    delete[] combinedBlock;
+}
 
-    cout << "Arquivos temporários e de entrada removidos." << endl;
+void createTempReuseFiles(const string& binName){
+    ifstream input(binName.c_str(), ios::binary);
+    if(!input.is_open()) throw runtime_error("Erro ao abrir arquivo binario: " + binName);
+    Athlete* block = new Athlete[BLOCK_SIZE];
+    int currentIndex = 0;
+    int totalBlocks = 0;
+    int totalRegisters = 0;
+    
+    bool hasData = true;
+    while(hasData){
+        int read = readBlock(input, block);
+        if(read != 0){
+            orderBlock(block, read);
+            writeBlock(currentIndex, block, read);
+            totalRegisters+=read;
+            totalBlocks++;
+            currentIndex = (currentIndex+1) % NUM_TEMP_FILES;
+        }else{
+            hasData = false;
+        }
+    }
+    input.close();
+    delete[] block;
+}
 
+//intercalacao de arquivos temporarios
+void mergeTempFiles(const string& outputName){
+    ifstream* inputs = new ifstream[NUM_TEMP_FILES];
+    Athlete* athletes = new Athlete[NUM_TEMP_FILES];
+    bool* actives = new bool[NUM_TEMP_FILES];
+    
+    for(int i = 0; i < NUM_TEMP_FILES; i++){
+        ostringstream oss;
+        oss << "temp" << i << ".bin";
+        inputs[i].open(oss.str().c_str(), ios::binary);
+        if(inputs[i].read(reinterpret_cast<char*>(&athletes[i]), sizeof(Athlete))){
+            actives[i] = true;
+        }else{
+            actives[i] = false;
+        }
+    }
+
+    ofstream output(outputName.c_str(), ios::binary);
+    int registersWritten = 0;
+    bool hasFinished = false;
+    while(!hasFinished){
+        int maxId = -1;
+        int index = -1;
+        for (int j = 0; j < NUM_TEMP_FILES; ++j) {
+            if (actives[j] && (index == -1 || athletes[j].id > maxId)) {
+                maxId = athletes[j].id;
+                index = j;
+            }
+        }
+        if(index != -1){
+            output.write(reinterpret_cast<char*>(&athletes[index]), sizeof(Athlete));
+            registersWritten++;
+            if (inputs[index].read(reinterpret_cast<char*>(&athletes[index]), sizeof(Athlete))) {
+                actives[index] = true;
+            } else {
+                actives[index] = false;
+            }
+        }else{
+            hasFinished = true;
+        }
+    }
+    for (int i = 0; i < NUM_TEMP_FILES; ++i) {
+        inputs[i].close();
+    }
+    output.close();
+
+    delete[] inputs;
+    delete[] athletes;
+    delete[] actives;
+}
+
+void binaryToCsv(const string& binName, const string& csvName){
+    ifstream input(binName.c_str(), ios::binary);
+    ofstream output(csvName.c_str());
+
+    Athlete a;
+    while(input.read(reinterpret_cast<char*>(&a), sizeof(Athlete))){
+        output << a.id << ","
+              << a.name << ","
+              << a.city << ","
+              << a.sport << ","
+              << a.event << endl;
+    }
+    input.close();
+    output.close();
+}
+
+void cleanTempFiles(){
+    cout << "Limpando arquivos temporários" << endl;
+        for (int i = 0; i < NUM_TEMP_FILES; ++i) {
+            ostringstream oss;
+            oss << "temp" << i << ".bin";
+            remove(oss.str().c_str());
+        }
+}
+
+int main(){
+    string csvName = "data_athlete_event.csv";
+    string binName = "dados.bin";
+
+    csvToBin(csvName, binName);
+    ifstream file(binName.c_str(), ios::binary | ios::ate);
+    if (file.is_open()) {
+        long tamanho = file.tellg();
+        cout << "Tamanho do arquivo binário: " << tamanho << " bytes" << endl;
+        cout << "Número de registros: " << tamanho / sizeof(Athlete) << endl;
+        file.close();
+    }
+
+    createTempReuseFiles(binName);
+    string finalOutput = "saida_ordenada.bin";
+    mergeTempFiles(finalOutput);
+    string finalCsv = "saida_ordenada.csv";
+    binaryToCsv(finalOutput, finalCsv);
+    cleanTempFiles();
+    
     return 0;
 }
