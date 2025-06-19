@@ -202,6 +202,7 @@ void mergeTempFiles(const string& outputName){
     }
 
     ofstream output(outputName.c_str(), ios::binary);
+    if(!output.is_open()) throw runtime_error("Erro ao abrir arquivo: " + outputName);
     int registersWritten = 0;
     bool hasFinished = false;
     while(!hasFinished){
@@ -237,7 +238,9 @@ void mergeTempFiles(const string& outputName){
 
 void binaryToCsv(const string& binName, const string& csvName){
     ifstream input(binName.c_str(), ios::binary);
+    if(!input.is_open()) throw runtime_error("Erro ao abrir arquivo binario: " + binName);
     ofstream output(csvName.c_str());
+    if(!output.is_open()) throw runtime_error("Erro ao abrir arquivo: " + csvName);
 
     Athlete a;
     while(input.read(reinterpret_cast<char*>(&a), sizeof(Athlete))){
@@ -271,6 +274,8 @@ int main(){
         cout << "Tamanho do arquivo binário: " << tamanho << " bytes" << endl;
         cout << "Número de registros: " << tamanho / sizeof(Athlete) << endl;
         file.close();
+    }else{
+        throw runtime_error("Erro ao abrir arquivo: " + binName);
     }
 
     createTempReuseFiles(binName);
